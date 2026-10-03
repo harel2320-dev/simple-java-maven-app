@@ -1,0 +1,16 @@
+name: CI - AWS ECR
+
+on:
+  push:
+    branches: [AWS-Infrastructure]
+
+permissions:
+  contents: write
+
+jobs:
+  pipeline:
+    uses: ./.github/workflows/build.yml
+    with:
+      runner: self-hosted
+      image: 156084119335.dkr.ecr.eu-north-1.amazonaws.com/simple-java-maven-app
+      registry: ecr

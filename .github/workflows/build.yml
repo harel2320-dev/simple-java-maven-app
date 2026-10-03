@@ -1,0 +1,59 @@
+name: Build and Push
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        type: string
+        required: true
+      image:
+        type: string
+        required: true
+      registry:
+        type: string
+        required: true
+
+jobs:
+  build:
+    runs-on: ${{ inputs.runner }}
+
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Increase the patch version
+        run: |
+          OLD=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+          MAJOR=$(echo $OLD | cut -d. -f1)
+          MINOR=$(echo $OLD | cut -d. -f2)
+          PATCH=$(echo $OLD | cut -d. -f3)
+          PATCH=$((PATCH + 1))
+          NEW=$MAJOR.$MINOR.$PATCH
+          mvn versions:set -DnewVersion=$NEW -DgenerateBackupPoms=false
+          echo "VERSION=$NEW" >> $GITHUB_ENV
+
+      - name: Login to Docker Hub
+        if: inputs.registry == 'dockerhub'
+        run: echo ${{ secrets.DOCKERHUB_TOKEN }} | docker login -u ${{ vars.DOCKERHUB_USERNAME }} --password-stdin
+
+      - name: Login to ECR
+        if: inputs.registry == 'ecr'
+        run: aws ecr get-login-password --region eu-north-1 | docker login --username AWS --password-stdin 156084119335.dkr.ecr.eu-north-1.amazonaws.com
+
+      - name: Build the image
+        run: docker build -t ${{ inputs.image }}:$VERSION .
+
+      - name: Push the image
+        run: docker push ${{ inputs.image }}:$VERSION
+
+      - name: Run the image from the registry
+        run: |
+          docker rmi ${{ inputs.image }}:$VERSION
+          docker run --rm ${{ inputs.image }}:$VERSION
+
+      - name: Save the new version
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git commit -am "new version $VERSION"
+          git push
